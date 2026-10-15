@@ -43,6 +43,52 @@ Clients without OAuth can add `"headers": {"Authorization": "Bearer <APIFY_TOKEN
 - "Using the EDGAR tool, get Apple's and Microsoft's 10-K and 10-Q filings since 2023 and their latest Assets, NetIncomeLoss and diluted EPS."
 - "Find the CIK for Nvidia and list its last five 8-K filings with links."
 
+
+## Local stdio MCP server
+
+This repo also ships a **stdio MCP server** (TypeScript, `@modelcontextprotocol/sdk`) under [`mcp/`](./mcp). It exposes the tool `edgar_company_filings_and_facts`, which runs the same Apify Actor via the Apify API. `initialize` and `tools/list` work **without** a token; tool calls require `APIFY_TOKEN`.
+
+### Install & run (Node)
+
+```bash
+cd mcp
+npm install
+npm run build
+APIFY_TOKEN=your_token node dist/index.js
+```
+
+### MCP client config (Cursor / Claude Desktop)
+
+```json
+{
+  "mcpServers": {
+    "fairquery-edgar": {
+      "command": "node",
+      "args": ["/absolute/path/to/edgar-company-facts-filings/mcp/dist/index.js"],
+      "env": {
+        "APIFY_TOKEN": "your_apify_token"
+      }
+    }
+  }
+}
+```
+
+### Docker
+
+Build from `mcp/`:
+
+```bash
+cd mcp
+docker build -t fairquery-edgar-mcp .
+docker run -i -e APIFY_TOKEN=your_token fairquery-edgar-mcp
+```
+
+For Glama, paste the repo-root Dockerfile from [`Dockerfile.mcp`](./Dockerfile.mcp) when adding the server (build context = repository root).
+
+### Glama
+
+`glama.json` lists `fairquery` as maintainer. After Glama indexes the server, claim ownership if needed.
+
 ## Data sources (SEC fair access)
 
 | Resource | URL |

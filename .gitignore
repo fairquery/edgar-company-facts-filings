@@ -12,3 +12,7 @@ tsconfig.tsbuildinfo
 
 # Added by Apify CLI
 .venv
+
+# MCP server local install / build
+mcp/node_modules/
+mcp/dist/
