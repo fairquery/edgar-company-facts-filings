@@ -1,0 +1,30 @@
+{
+    "$schema": "https://apify.com/schemas/v1/actor.ide.json",
+    "actorSpecification": 1,
+    "name": "edgar-company-facts-filings",
+    "title": "EDGAR Company Facts & Filings for Agents",
+    "description": "Resolve US company tickers/CIKs/names via SEC EDGAR and return structured filings and XBRL company facts for LLM agents. Public Fairquery Actor on Apify Store. Not investment advice.",
+    "version": "1.0",
+    "buildTag": "latest",
+    "meta": {
+        "templateId": "ts-empty",
+        "generatedBy": "Fairquery"
+    },
+    "defaultRunOptions": {
+        "build": "latest",
+        "memoryMbytes": 256,
+        "timeoutSecs": 300
+    },
+    "minMemoryMbytes": 256,
+    "maxMemoryMbytes": 1024,
+    "input": "./input_schema.json",
+    "inputSchema": "./input_schema.json",
+    "output": "./output_schema.json",
+    "outputSchema": "./output_schema.json",
+    "storages": {
+        "dataset": "./dataset_schema.json",
+        "keyValueStore": "./key_value_store_schema.json"
+    },
+    "dockerfile": "../Dockerfile",
+    "readme": "../README.md"
+}

@@ -1,0 +1,13 @@
+{
+    "$schema": "https://apify.com/schemas/v1/key_value_store.ide.json",
+    "actorKeyValueStoreSchemaVersion": 1,
+    "title": "EDGAR key-value store",
+    "collections": {
+        "runSummary": {
+            "title": "Run summary",
+            "description": "Counts, timings, and echoed input for the run.",
+            "key": "RUN_SUMMARY",
+            "contentTypes": ["application/json"]
+        }
+    }
+}

@@ -1,0 +1,40 @@
+{
+    "name": "edgar-company-facts-filings",
+    "version": "1.0.0",
+    "type": "module",
+    "description": "SEC EDGAR company facts and filings for AI agents (Fairquery).",
+    "engines": {
+        "node": ">=20"
+    },
+    "dependencies": {
+        "apify": "^3.7.0"
+    },
+    "devDependencies": {
+        "@apify/eslint-config": "^2.0.0",
+        "@apify/tsconfig": "^0.2.0",
+        "@types/node": "^24.0.0",
+        "eslint": "^9.29.0",
+        "eslint-config-prettier": "^10.1.5",
+        "globals": "^17.0.0",
+        "prettier": "^3.5.3",
+        "tsx": "^4.20.3",
+        "typescript": "^5.8.0",
+        "typescript-eslint": "^8.58.0",
+        "vitest": "^3.0.0"
+    },
+    "scripts": {
+        "start": "npm run start:dev",
+        "start:prod": "node dist/main.js",
+        "start:dev": "tsx src/main.ts",
+        "build": "tsc",
+        "lint": "eslint",
+        "test": "vitest run"
+    },
+    "author": "Fairquery <fairquery@proton.me>",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/fairquery/edgar-company-facts-filings.git"
+    },
+    "homepage": "https://apify.com/fairquery/edgar-company-facts-filings"
+}

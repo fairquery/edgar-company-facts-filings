@@ -1,0 +1,408 @@
+{
+    "$schema": "https://apify.com/schemas/v1/dataset.ide.json",
+    "actorSpecification": 1,
+    "fields": {
+        "type": "object",
+        "properties": {
+            "schema_version": {
+                "type": "string",
+                "title": "Schema version",
+                "description": "Output row schema version.",
+                "example": "1.0.0"
+            },
+            "type": {
+                "type": "string",
+                "title": "Row type",
+                "description": "Row kind: company, filing, fact, text_excerpt, or error.",
+                "enum": [
+                    "company",
+                    "filing",
+                    "fact",
+                    "text_excerpt",
+                    "error"
+                ],
+                "example": "filing"
+            },
+            "source_url": {
+                "type": "string",
+                "title": "Source URL",
+                "description": "SEC URL this row was derived from.",
+                "example": "https://data.sec.gov/submissions/CIK0000320193.json"
+            },
+            "scraped_at": {
+                "type": "string",
+                "title": "Scraped at",
+                "description": "ISO timestamp when the row was produced."
+            },
+            "query": {
+                "type": "string",
+                "title": "Query"
+            },
+            "cik": {
+                "type": "string",
+                "title": "CIK"
+            },
+            "ticker": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "title": "Ticker"
+            },
+            "name": {
+                "type": "string",
+                "title": "Company name"
+            },
+            "entity_type": {
+                "type": "string",
+                "title": "Entity type"
+            },
+            "sic": {
+                "type": "string",
+                "title": "SIC"
+            },
+            "sic_description": {
+                "type": "string",
+                "title": "SIC description"
+            },
+            "exchanges": {
+                "type": "array",
+                "title": "Exchanges",
+                "items": {
+                    "type": "string"
+                }
+            },
+            "ein": {
+                "type": "string",
+                "title": "EIN"
+            },
+            "fiscal_year_end": {
+                "type": "string",
+                "title": "Fiscal year end"
+            },
+            "form": {
+                "type": "string",
+                "title": "Form type"
+            },
+            "filing_date": {
+                "type": "string",
+                "title": "Filing date"
+            },
+            "report_date": {
+                "type": "string",
+                "title": "Report date"
+            },
+            "accession_number": {
+                "type": "string",
+                "title": "Accession number"
+            },
+            "primary_document": {
+                "type": "string",
+                "title": "Primary document"
+            },
+            "primary_doc_description": {
+                "type": "string",
+                "title": "Primary doc description"
+            },
+            "document_url": {
+                "type": "string",
+                "title": "Document URL"
+            },
+            "filing_url": {
+                "type": "string",
+                "title": "Filing URL"
+            },
+            "is_xbrl": {
+                "type": "boolean",
+                "title": "Is XBRL"
+            },
+            "is_inline_xbrl": {
+                "type": "boolean",
+                "title": "Is inline XBRL"
+            },
+            "size": {
+                "type": "integer",
+                "title": "Size"
+            },
+            "taxonomy": {
+                "type": "string",
+                "title": "Taxonomy"
+            },
+            "concept": {
+                "type": "string",
+                "title": "XBRL concept"
+            },
+            "label": {
+                "type": "string",
+                "title": "Concept label"
+            },
+            "unit": {
+                "type": "string",
+                "title": "Unit"
+            },
+            "value": {
+                "title": "Fact value"
+            },
+            "end": {
+                "type": "string",
+                "title": "Period end"
+            },
+            "start": {
+                "type": "string",
+                "title": "Period start"
+            },
+            "filed": {
+                "type": "string",
+                "title": "Filed date"
+            },
+            "frame": {
+                "type": "string",
+                "title": "Frame"
+            },
+            "fy": {
+                "type": "integer",
+                "title": "Fiscal year"
+            },
+            "fp": {
+                "type": "string",
+                "title": "Fiscal period"
+            },
+            "excerpt": {
+                "type": "string",
+                "title": "Text excerpt"
+            },
+            "excerpt_chars": {
+                "type": "integer",
+                "title": "Excerpt length"
+            },
+            "code": {
+                "type": "string",
+                "title": "Error code",
+                "description": "Machine-readable error code."
+            },
+            "message": {
+                "type": "string",
+                "title": "Error message"
+            },
+            "retryable": {
+                "type": "boolean",
+                "title": "Retryable"
+            },
+            "context": {
+                "type": "object",
+                "title": "Error context"
+            }
+        },
+        "required": [
+            "schema_version",
+            "type",
+            "source_url",
+            "scraped_at"
+        ]
+    },
+    "views": {
+        "overview": {
+            "title": "Overview",
+            "transformation": {
+                "fields": [
+                    "type",
+                    "ticker",
+                    "cik",
+                    "name",
+                    "form",
+                    "concept",
+                    "value",
+                    "code",
+                    "source_url"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "type": {
+                        "label": "Type",
+                        "format": "text"
+                    },
+                    "ticker": {
+                        "label": "Ticker",
+                        "format": "text"
+                    },
+                    "cik": {
+                        "label": "CIK",
+                        "format": "text"
+                    },
+                    "name": {
+                        "label": "Name",
+                        "format": "text"
+                    },
+                    "form": {
+                        "label": "Form",
+                        "format": "text"
+                    },
+                    "concept": {
+                        "label": "Concept",
+                        "format": "text"
+                    },
+                    "value": {
+                        "label": "Value",
+                        "format": "text"
+                    },
+                    "code": {
+                        "label": "Error",
+                        "format": "text"
+                    },
+                    "source_url": {
+                        "label": "Source",
+                        "format": "link"
+                    }
+                }
+            }
+        },
+        "filings": {
+            "title": "Filings",
+            "transformation": {
+                "fields": [
+                    "ticker",
+                    "name",
+                    "form",
+                    "filing_date",
+                    "accession_number",
+                    "document_url",
+                    "source_url"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "ticker": {
+                        "label": "Ticker",
+                        "format": "text"
+                    },
+                    "name": {
+                        "label": "Name",
+                        "format": "text"
+                    },
+                    "form": {
+                        "label": "Form",
+                        "format": "text"
+                    },
+                    "filing_date": {
+                        "label": "Filed",
+                        "format": "date"
+                    },
+                    "accession_number": {
+                        "label": "Accession",
+                        "format": "text"
+                    },
+                    "document_url": {
+                        "label": "Document",
+                        "format": "link"
+                    },
+                    "source_url": {
+                        "label": "Source",
+                        "format": "link"
+                    }
+                }
+            }
+        },
+        "facts": {
+            "title": "Financial facts",
+            "transformation": {
+                "fields": [
+                    "ticker",
+                    "concept",
+                    "label",
+                    "unit",
+                    "value",
+                    "end",
+                    "filed",
+                    "form",
+                    "fy",
+                    "fp"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "ticker": {
+                        "label": "Ticker",
+                        "format": "text"
+                    },
+                    "concept": {
+                        "label": "Concept",
+                        "format": "text"
+                    },
+                    "label": {
+                        "label": "Label",
+                        "format": "text"
+                    },
+                    "unit": {
+                        "label": "Unit",
+                        "format": "text"
+                    },
+                    "value": {
+                        "label": "Value",
+                        "format": "number"
+                    },
+                    "end": {
+                        "label": "Period end",
+                        "format": "date"
+                    },
+                    "filed": {
+                        "label": "Filed",
+                        "format": "date"
+                    },
+                    "form": {
+                        "label": "Form",
+                        "format": "text"
+                    },
+                    "fy": {
+                        "label": "FY",
+                        "format": "number"
+                    },
+                    "fp": {
+                        "label": "FP",
+                        "format": "text"
+                    }
+                }
+            }
+        },
+        "errors": {
+            "title": "Errors",
+            "transformation": {
+                "fields": [
+                    "code",
+                    "message",
+                    "retryable",
+                    "query",
+                    "cik"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "code": {
+                        "label": "Code",
+                        "format": "text"
+                    },
+                    "message": {
+                        "label": "Message",
+                        "format": "text"
+                    },
+                    "retryable": {
+                        "label": "Retryable",
+                        "format": "boolean"
+                    },
+                    "query": {
+                        "label": "Query",
+                        "format": "text"
+                    },
+                    "cik": {
+                        "label": "CIK",
+                        "format": "text"
+                    }
+                }
+            }
+        }
+    }
+}

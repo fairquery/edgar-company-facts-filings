@@ -1,0 +1,114 @@
+{
+    "$schema": "https://apify.com/schemas/v1/input.ide.json",
+    "title": "EDGAR Company Facts & Filings",
+    "description": "Fetch SEC EDGAR submissions and/or XBRL company facts for one or more US companies. Provide tickers (AAPL), CIKs (320193), or name fragments (Apple).",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "companies": {
+            "title": "Companies",
+            "type": "array",
+            "description": "List of tickers, CIKs (1\u201310 digits), or company name fragments to resolve via SEC company_tickers.json.",
+            "editor": "stringList",
+            "prefill": [
+                "AAPL",
+                "MSFT"
+            ],
+            "minItems": 1,
+            "default": [
+                "AAPL",
+                "MSFT"
+            ]
+        },
+        "mode": {
+            "title": "Mode",
+            "type": "string",
+            "description": "What to return: filings only, XBRL facts only, or both.",
+            "enum": [
+                "filings",
+                "facts",
+                "both"
+            ],
+            "default": "both",
+            "prefill": "both"
+        },
+        "formTypes": {
+            "title": "Form types",
+            "type": "array",
+            "description": "Optional filter of SEC form types (e.g. 10-K, 10-Q, 8-K). Empty = all recent forms.",
+            "editor": "stringList",
+            "prefill": [
+                "10-K",
+                "10-Q",
+                "8-K"
+            ],
+            "default": [
+                "10-K",
+                "10-Q",
+                "8-K"
+            ]
+        },
+        "since": {
+            "title": "Since (filing date)",
+            "type": "string",
+            "description": "ISO date YYYY-MM-DD. Keep filings with filingDate on or after this date.",
+            "editor": "textfield",
+            "prefill": "2023-01-01"
+        },
+        "maxFilingsPerCompany": {
+            "title": "Max filings per company",
+            "type": "integer",
+            "description": "Maximum filing rows to emit per resolved company (after filters).",
+            "default": 5,
+            "prefill": 5,
+            "minimum": 1,
+            "maximum": 200
+        },
+        "metrics": {
+            "title": "Financial metrics (XBRL concepts)",
+            "type": "array",
+            "description": "us-gaap / dei concept names to keep (e.g. Assets, NetIncomeLoss). Empty uses a curated default set.",
+            "editor": "stringList",
+            "prefill": [
+                "Assets",
+                "NetIncomeLoss",
+                "EarningsPerShareDiluted",
+                "Revenues"
+            ],
+            "default": [
+                "Assets",
+                "NetIncomeLoss",
+                "EarningsPerShareDiluted",
+                "Revenues"
+            ]
+        },
+        "maxFactsPerMetric": {
+            "title": "Max facts per metric",
+            "type": "integer",
+            "description": "Most-recent fact values to keep per concept/unit.",
+            "default": 4,
+            "prefill": 4,
+            "minimum": 1,
+            "maximum": 50
+        },
+        "includeTextExcerpt": {
+            "title": "Include text excerpt",
+            "type": "boolean",
+            "description": "If true, download each kept filing's primary document and emit a short plain-text excerpt row (extra SEC request + text-excerpt charge).",
+            "default": false,
+            "prefill": false
+        },
+        "excerptMaxChars": {
+            "title": "Excerpt max characters",
+            "type": "integer",
+            "description": "Maximum characters for each text excerpt.",
+            "default": 2000,
+            "prefill": 2000,
+            "minimum": 200,
+            "maximum": 20000
+        }
+    },
+    "required": [
+        "companies"
+    ]
+}
