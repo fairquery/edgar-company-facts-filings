@@ -46,7 +46,7 @@ Clients without OAuth can add `"headers": {"Authorization": "Bearer <APIFY_TOKEN
 
 ## Local stdio MCP server
 
-This repo also ships a **stdio MCP server** (TypeScript, `@modelcontextprotocol/sdk`) under [`mcp/`](./mcp). It exposes the tool `edgar_company_filings_and_facts`, which runs the same Apify Actor via the Apify API. `initialize` and `tools/list` work **without** a token; tool calls require `APIFY_TOKEN`.
+This repo also ships a **stdio MCP server** (TypeScript, `@modelcontextprotocol/sdk`) under [`mcp/`](./mcp). It exposes `edgar_company_filings_and_facts` (runs the same Apify Actor via the Apify API; requires `APIFY_TOKEN`) and the free `edgar_resolve_company` (ticker/name → CIK straight from SEC, no token). `initialize` and `tools/list` work **without** a token.
 
 ### Install & run (Node)
 
