@@ -38,7 +38,7 @@ function resolveOne(rows: TickerEntry[], query: string, limit: number): Record<s
 }
 
 function createServer(): McpServer {
-    const server = new McpServer({ name: 'fairquery-edgar', version: '1.2.0' });
+    const server = new McpServer({ name: 'fairquery-edgar', version: '1.2.1' });
 
     server.registerTool(
         'edgar_resolve_company',
@@ -48,7 +48,10 @@ function createServer(): McpServer {
                 'Resolve US company tickers, CIKs or name fragments to official SEC CIK numbers, tickers and registrant names using the SEC public ticker map (company_tickers.json).',
                 'Use this first when you only need an identifier (e.g. "what is Nvidia\'s CIK?") or want to confirm which company a name refers to before fetching filings/facts. Next steps: edgar_list_filings for filings, edgar_get_company_facts for financial data.',
                 'Behavior: read-only HTTP GET to sec.gov, no API token, no cost; the map is cached for 6 hours. Covers SEC registrants with a listed ticker only (no delisted/private filers).',
-                'Returns {count, items}: one "company_match" row per match (cik zero-padded to 10 digits, ticker, name, match = cik|ticker|name, submissions_url), or an "error" row with code COMPANY_NOT_FOUND. Exact ticker/CIK matches win over name substring matches.',
+                'RETURNS: {count, items}: one "company_match" row per match (cik zero-padded to 10 digits, ticker, name, match = cik|ticker|name, submissions_url), or an "error" row with code COMPANY_NOT_FOUND. Exact ticker/CIK matches win over name substring matches.',
+                "WHEN NOT TO USE: not for filings (edgar_list_filings) or financial values (edgar_get_company_facts); other tools already accept tickers/names directly.",
+                "COST: free - direct sec.gov requests from this MCP server, no APIFY_TOKEN, no Apify billing.",
+                "EXAMPLE: {\"queries\":[\"NVDA\",\"apple\"]} -> {count:2, items:[{type:\"company_match\", cik:\"0001045810\", ticker:\"NVDA\", name:\"NVIDIA CORP\", match:\"ticker\"}, ...]}",
             ].join('\n'),
             inputSchema: {
                 queries: z
@@ -83,7 +86,7 @@ function createServer(): McpServer {
         .max(200)
         .describe('Ticker ("AAPL"), CIK ("320193", zero-padding optional) or company name fragment ("Apple"); best match is used. Call edgar_resolve_company first if the name is ambiguous.');
     const limitArg = (def: number, max: number) =>
-        z.number().int().min(1).max(max).default(def).describe(`Page size (default ${def}, max ${max})`);
+        z.number().int().min(1).max(max).default(def).describe(`Optional page size: items to return, integer 1-${max} (default ${def})`);
     const offsetArg = z.number().int().min(0).default(0).describe('Number of items to skip for paging (default 0); use nextOffset from the previous response');
     const dateArg = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -142,13 +145,16 @@ function createServer(): McpServer {
                 'List a single company\'s SEC EDGAR filings (newest first) with form type, filing/report dates, accession number and direct document URLs, filtered by form type and date range, with limit/offset paging.',
                 'Use to find which filings exist (e.g. "Apple\'s 10-Ks since 2020", "Tesla 8-Ks this year") and to get an accession_number / document_url for edgar_get_filing_document. Not for financial values (use edgar_get_company_facts).',
                 'Behavior: free, read-only GET to data.sec.gov submissions API (no token). By default searches the ~1000 most recent filings; set includeOlder=true to also load the full historical archive (more requests).',
-                'Returns {count,total,offset,hasMore,nextOffset,meta:{cik,name,tickers},items:[{accession_number,form,filing_date,report_date,primary_document,primary_doc_description,items,size_bytes,document_url,index_url}]}. Errors: COMPANY_NOT_FOUND, NOT_FOUND, SEC_FETCH_FAILED.',
+                'RETURNS: {count,total,offset,hasMore,nextOffset,meta:{cik,name,tickers},items:[{accession_number,form,filing_date,report_date,primary_document,primary_doc_description,items,size_bytes,document_url,index_url}]}. Errors: COMPANY_NOT_FOUND, NOT_FOUND, SEC_FETCH_FAILED.',
+                "WHEN NOT TO USE: for document text use edgar_get_filing_document; for XBRL numbers use edgar_get_company_facts; for many companies at once use edgar_batch_export (paid).",
+                "COST: free - direct sec.gov requests from this MCP server, no APIFY_TOKEN, no Apify billing.",
+                "EXAMPLE: {\"company\":\"AAPL\",\"formTypes\":[\"10-K\"],\"since\":\"2020-01-01\",\"limit\":5} -> 5 newest Apple 10-K rows with accession_number and document_url.",
             ].join('\n'),
             inputSchema: {
                 company: companyArg,
                 formTypes: z.array(z.string().min(1)).max(20).optional().describe('Exact form types to keep, e.g. ["10-K","10-Q"], ["8-K"], ["4"]. Case-insensitive. Omit for all forms.'),
-                since: dateArg.optional().describe('Only filings with filing_date >= this date (YYYY-MM-DD)'),
-                until: dateArg.optional().describe('Only filings with filing_date <= this date (YYYY-MM-DD)'),
+                since: dateArg.optional().describe('Optional inclusive lower bound on filing_date, format YYYY-MM-DD, e.g. "2020-01-01". Default: no lower bound.'),
+                until: dateArg.optional().describe('Optional inclusive upper bound on filing_date, format YYYY-MM-DD, e.g. "2024-12-31". Default: no upper bound.'),
                 includeOlder: z.boolean().default(false).describe('Also search filings older than the ~1000 most recent (default false)'),
                 limit: limitArg(20, 200),
                 offset: offsetArg,
@@ -186,7 +192,10 @@ function createServer(): McpServer {
                 'Fetch the text of an SEC filing document from the sec.gov EDGAR archives, converted from HTML to plain text, returned in character-paged chunks.',
                 'Use to read the actual content of a filing (risk factors, MD&A, 8-K press release, ...). Identify the document by documentUrl (from edgar_list_filings), or by company + accessionNumber (the primary document is used unless document names another file in the filing).',
                 'Behavior: free, read-only GET to www.sec.gov (no token). Large 10-Ks can exceed 500k characters; read them in pages with offset/maxChars (nextOffset is returned). Only https://www.sec.gov/Archives/ URLs are accepted.',
-                'Returns {document_url,content_type,total_chars,offset,returned_chars,hasMore,nextOffset,text}. Errors: INVALID_URL, COMPANY_NOT_FOUND, FILING_NOT_FOUND, NOT_FOUND, SEC_FETCH_FAILED.',
+                'RETURNS: {document_url,content_type,total_chars,offset,returned_chars,hasMore,nextOffset,text}. Errors: INVALID_URL, COMPANY_NOT_FOUND, FILING_NOT_FOUND, NOT_FOUND, SEC_FETCH_FAILED.',
+                "WHEN NOT TO USE: to find which filings exist use edgar_list_filings first; for structured financial values use edgar_get_company_facts (no text parsing needed).",
+                "COST: free - direct sec.gov requests from this MCP server, no APIFY_TOKEN, no Apify billing.",
+                "EXAMPLE: {\"company\":\"AAPL\",\"accessionNumber\":\"0000320193-24-000123\",\"maxChars\":20000} -> first 20000 chars of the 10-K text with nextOffset for the next page.",
             ].join('\n'),
             inputSchema: {
                 documentUrl: z.string().url().optional().describe('Full sec.gov Archives URL, e.g. https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm'),
@@ -259,14 +268,17 @@ function createServer(): McpServer {
                 'Get reported XBRL financial data (us-gaap, ifrs-full, dei, ...) for one company from the SEC companyfacts API, e.g. Assets, Revenues, NetIncomeLoss, EarningsPerShareDiluted.',
                 'Two modes: (1) omit concepts to LIST the concepts the company reports (name, label, units, number of values) so you can pick exact names; (2) pass concepts to get their time-series values, newest first, optionally filtered by form (10-K/10-Q), fiscal period or date. Use edgar_get_concept_across_companies to compare one concept across many companies.',
                 'Behavior: free, read-only GET to data.sec.gov (no token). Concept names are case-sensitive. Values are as reported (duplicates across filings possible; set dedupe=true to keep one value per period).',
-                'Returns paged {count,total,offset,hasMore,nextOffset,meta:{cik,name},items}. List mode items: {taxonomy,concept,label,units,values}. Values mode items: {taxonomy,concept,label,unit,value,start,end,fy,fp,form,filed,accession_number,frame}. Errors: COMPANY_NOT_FOUND, NOT_FOUND (no XBRL data), SEC_FETCH_FAILED.',
+                'RETURNS: paged {count,total,offset,hasMore,nextOffset,meta:{cik,name},items}. List mode items: {taxonomy,concept,label,units,values}. Values mode items: {taxonomy,concept,label,unit,value,start,end,fy,fp,form,filed,accession_number,frame}. Errors: COMPANY_NOT_FOUND, NOT_FOUND (no XBRL data), SEC_FETCH_FAILED.',
+                "WHEN NOT TO USE: for filing documents/text use edgar_list_filings + edgar_get_filing_document; for one concept across all companies use edgar_get_concept_across_companies.",
+                "COST: free - direct sec.gov requests from this MCP server, no APIFY_TOKEN, no Apify billing.",
+                "EXAMPLE: {\"company\":\"MSFT\",\"concepts\":[\"Revenues\"],\"fiscalPeriod\":\"FY\",\"limit\":5} -> 5 newest annual Revenues values in USD.",
             ].join('\n'),
             inputSchema: {
                 company: companyArg,
                 concepts: z.array(z.string().min(1)).max(25).optional().describe('Exact concept names, e.g. ["Revenues","NetIncomeLoss"]. Omit to list available concepts.'),
                 taxonomy: z.string().optional().describe('Restrict to a taxonomy: "us-gaap", "ifrs-full", "dei", "srt". Omit for all.'),
                 search: z.string().optional().describe('List mode only: case-insensitive substring filter on concept name or label, e.g. "revenue"'),
-                forms: z.array(z.string()).optional().describe('Values mode: keep only values from these forms, e.g. ["10-K"]'),
+                forms: z.array(z.string()).optional().describe('Values mode only: keep values reported in these form types (case-insensitive), e.g. ["10-K"] for annual or ["10-Q"] for quarterly. Omit for all forms.'),
                 fiscalPeriod: z.enum(['FY', 'Q1', 'Q2', 'Q3', 'Q4']).optional().describe('Values mode: keep only this fiscal period'),
                 since: dateArg.optional().describe('Values mode: keep values whose period end >= YYYY-MM-DD'),
                 dedupe: z.boolean().default(true).describe('Values mode: keep one value per concept/unit/period (latest filed). Default true.'),
@@ -360,6 +372,9 @@ function createServer(): McpServer {
                 'Use for screening and peer comparison ("largest companies by total assets at end of 2023", "net income of all filers in CY2023"). For one company\'s history use edgar_get_company_facts.',
                 'Period format: "CY2023" (annual duration), "CY2023Q2" (quarterly duration), "CY2023Q4I" (instant, for balance-sheet items like Assets). Unit e.g. "USD", "USD-per-shares", "shares", "pure".',
                 'Behavior: free, read-only GET to data.sec.gov (no token). Returns paged {count,total,offset,hasMore,nextOffset,meta:{taxonomy,concept,label,unit,period,source_url},items:[{rank,cik,entity_name,value,start,end,location,accession_number}]}. Optional ciks filter restricts to given companies. Errors: NOT_FOUND (no such concept/unit/period frame), SEC_FETCH_FAILED.',
+                "WHEN NOT TO USE: for one company's time series use edgar_get_company_facts; for filings use edgar_list_filings.",
+                "COST: free - direct sec.gov requests from this MCP server, no APIFY_TOKEN, no Apify billing.",
+                "EXAMPLE: {\"concept\":\"Assets\",\"period\":\"CY2023Q4I\",\"limit\":10} -> top 10 filers by total assets at end of 2023.",
             ].join('\n'),
             inputSchema: {
                 concept: z.string().min(1).describe('Exact concept name, case-sensitive, e.g. "Assets", "Revenues", "NetIncomeLoss"'),
@@ -412,10 +427,12 @@ function createServer(): McpServer {
             title: 'Batch export filings & facts via Apify Actor (paid)',
             description: [
                 'Bulk export (paid, via Apify) of structured SEC EDGAR data for up to 50 US companies in one call: entity metadata, recent filings (10-K, 10-Q, 8-K, S-1, DEF 14A, ...) with document URLs, XBRL financial facts (Assets, Revenues, NetIncomeLoss, EarningsPerShareDiluted, ...) and optional plain-text excerpts of primary filing documents.',
-                'When to use: an agent needs filing lists/links or reported financial values from official SEC data. mode="filings" for filing history/links, "facts" for financial numbers, "both" for both. Prefer the free single-purpose tools (edgar_resolve_company, edgar_list_filings, edgar_get_company_facts, edgar_get_filing_document) for interactive lookups; use this tool for multi-company batch exports billed to your Apify account. Not for real-time quotes, prices, options, non-US companies or investment advice.',
-                'Behavior: read-only; runs the Fairquery Apify Actor fairquery/edgar-company-facts-filings via the Apify API, which queries sec.gov (throttled to <=5 req/s). Requires the APIFY_TOKEN environment variable. Typical run 5-60 s; the call waits up to ~5 minutes.',
-                'Cost (billed to the Apify account, pay per event): $0.00005 per run, $0.002 per resolved company, $0.002 per filing row, $0.0005 per fact row, $0.003 per text excerpt. Keep maxFilingsPerCompany, metrics and maxFactsPerMetric small to limit cost; e.g. 1 company, 5 filings, 3 metrics x 4 values ~ $0.018.',
-                'Returns {count, items}. Every row has schema_version, type (company | filing | fact | text_excerpt | error), source_url and scraped_at. filing rows: cik, ticker, form, filing_date, report_date, accession_number, primary_document, document_url. fact rows: taxonomy, concept, label, unit, value, start, end, filed, form. error rows: code (INPUT_EMPTY, COMPANY_NOT_FOUND, RESOLVE_FAILED, SUBMISSIONS_FETCH_FAILED, FACTS_FETCH_FAILED, EXCERPT_FETCH_FAILED), message, retryable. Unresolvable companies produce an error row, not a failure.',
+                'WHEN TO USE: an agent needs filing lists/links or reported financial values from official SEC data. mode="filings" for filing history/links, "facts" for financial numbers, "both" for both. Prefer the free single-purpose tools (edgar_resolve_company, edgar_list_filings, edgar_get_company_facts, edgar_get_filing_document) for interactive lookups; use this tool for multi-company batch exports billed to your Apify account. Not for real-time quotes, prices, options, non-US companies or investment advice.',
+                'BEHAVIOR: read-only; runs the Fairquery Apify Actor fairquery/edgar-company-facts-filings via the Apify API, which queries sec.gov (throttled to <=5 req/s). Requires the APIFY_TOKEN environment variable. Typical run 5-60 s; the call waits up to ~5 minutes.',
+                'COST: paid (billed to your Apify account, pay-per-event): $0.00005 per run, $0.002 per resolved company, $0.002 per filing row, $0.0005 per fact row, $0.003 per text excerpt. Keep maxFilingsPerCompany, metrics and maxFactsPerMetric small to limit cost; e.g. 1 company, 5 filings, 3 metrics x 4 values ~ $0.018.',
+                'RETURNS: {count, items}. Every row has schema_version, type (company | filing | fact | text_excerpt | error), source_url and scraped_at. filing rows: cik, ticker, form, filing_date, report_date, accession_number, primary_document, document_url. fact rows: taxonomy, concept, label, unit, value, start, end, filed, form. error rows: code (INPUT_EMPTY, COMPANY_NOT_FOUND, RESOLVE_FAILED, SUBMISSIONS_FETCH_FAILED, FACTS_FETCH_FAILED, EXCERPT_FETCH_FAILED), message, retryable. Unresolvable companies produce an error row, not a failure.',
+                "WHEN NOT TO USE: single-company or interactive lookups - use the free tools above (same SEC data, no cost).",
+                "EXAMPLE: {\"companies\":[\"AAPL\",\"MSFT\"],\"mode\":\"facts\",\"metrics\":[\"Revenues\"],\"maxFactsPerMetric\":4} -> company + fact rows (~$0.02).",
             ].join('\n'),
             inputSchema: {
                 companies: z
