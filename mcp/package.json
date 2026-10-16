@@ -1,7 +1,7 @@
 {
   "name": "fairquery-edgar-mcp",
-  "version": "1.0.0",
-  "description": "stdio MCP server for Fairquery EDGAR company facts & filings (Apify Actor)",
+  "version": "1.2.0",
+  "description": "stdio MCP server for SEC EDGAR: company resolution, filings, filing documents, XBRL facts and cross-company frames (Fairquery)",
   "type": "module",
   "bin": {
     "fairquery-edgar-mcp": "./dist/index.js"
@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "test:live": "node scripts/live-test.mjs"
   },
   "engines": {
     "node": ">=20"

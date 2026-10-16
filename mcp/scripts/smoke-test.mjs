@@ -37,11 +37,11 @@ await withClient(baseEnv, async (client) => {
     for (const t of tools) {
         console.log('  tool:', t.name);
     }
-    if (!tools.some((t) => t.name === 'edgar_company_filings_and_facts')) {
-        throw new Error('expected tool edgar_company_filings_and_facts');
+    if (!tools.some((t) => t.name === 'edgar_batch_export')) {
+        throw new Error('expected tool edgar_batch_export');
     }
     const noToken = await client.callTool({
-        name: 'edgar_company_filings_and_facts',
+        name: 'edgar_batch_export',
         arguments: { companies: ['AAPL'], mode: 'facts' },
     });
     const text = JSON.stringify(noToken);
@@ -59,7 +59,7 @@ if (doCall) {
     await withClient({ ...process.env }, async (client) => {
         console.log('OK connect+initialize (with token present, value not logged)');
         const result = await client.callTool({
-            name: 'edgar_company_filings_and_facts',
+            name: 'edgar_batch_export',
             arguments: {
                 companies: ['AAPL'],
                 mode: 'facts',
@@ -72,7 +72,7 @@ if (doCall) {
         }
         const content = result.content?.[0];
         const raw = content && content.type === 'text' ? content.text : JSON.stringify(result);
-        const parsed = JSON.parse(raw);
+        const parsed0 = JSON.parse(raw); const parsed = Array.isArray(parsed0) ? parsed0 : parsed0.items;
         const n = Array.isArray(parsed) ? parsed.length : 1;
         const types = Array.isArray(parsed)
             ? [...new Set(parsed.map((r) => r.type).filter(Boolean))]

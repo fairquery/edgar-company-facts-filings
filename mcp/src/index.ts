@@ -1,32 +1,19 @@
 #!/usr/bin/env node
 /**
  * Fairquery EDGAR stdio MCP server.
- * - edgar_resolve_company: free, calls SEC's public ticker map directly (no token, no cost).
- * - edgar_company_filings_and_facts: runs the public Apify Actor fairquery/edgar-company-facts-filings
+ * Free tools (direct sec.gov, no token): edgar_resolve_company, edgar_list_filings, edgar_get_filing_document,
+ *   edgar_get_company_facts, edgar_get_concept_across_companies.
+ * - edgar_batch_export (paid): runs the public Apify Actor fairquery/edgar-company-facts-filings
  *   (requires APIFY_TOKEN, pay-per-event).
  * initialize and tools/list work without any token.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { READ_ONLY_OPEN_WORLD, compact, errorResult, proxyActor, rowsOutputSchema, rowsResult } from './common.js';
+import { READ_ONLY_OPEN_WORLD, compact, errorResult, jsonResult, pagedOutputSchema, pagedResult, proxyActor, rowsOutputSchema, rowsResult } from './common.js';
+import { SEC_TICKERS_URL, SecHttpError, htmlToText, loadTickers, padCik, resolveCik, secJson, secText, type TickerEntry } from './sec.js';
 
 const ACTOR_ID = 'fairquery~edgar-company-facts-filings';
-const SEC_TICKERS_URL = 'https://www.sec.gov/files/company_tickers.json';
-const SEC_USER_AGENT = 'Fairquery fairquery@proton.me';
-
-type TickerEntry = { cik_str: number; ticker: string; title: string };
-let tickerCache: { at: number; rows: TickerEntry[] } | undefined;
-
-async function loadTickers(): Promise<TickerEntry[]> {
-    if (tickerCache && Date.now() - tickerCache.at < 6 * 3600_000) return tickerCache.rows;
-    const res = await fetch(SEC_TICKERS_URL, { headers: { 'User-Agent': SEC_USER_AGENT, Accept: 'application/json' } });
-    if (!res.ok) throw new Error(`SEC ticker map HTTP ${res.status}`);
-    const rows = Object.values((await res.json()) as Record<string, TickerEntry>);
-    tickerCache = { at: Date.now(), rows };
-    return rows;
-}
-
 function resolveOne(rows: TickerEntry[], query: string, limit: number): Record<string, unknown>[] {
     const q = query.trim();
     const base = { type: 'company_match', query: q, source_url: SEC_TICKERS_URL };
@@ -51,7 +38,7 @@ function resolveOne(rows: TickerEntry[], query: string, limit: number): Record<s
 }
 
 function createServer(): McpServer {
-    const server = new McpServer({ name: 'fairquery-edgar', version: '1.1.0' });
+    const server = new McpServer({ name: 'fairquery-edgar', version: '1.2.0' });
 
     server.registerTool(
         'edgar_resolve_company',
@@ -59,7 +46,7 @@ function createServer(): McpServer {
             title: 'Resolve company to SEC CIK (free)',
             description: [
                 'Resolve US company tickers, CIKs or name fragments to official SEC CIK numbers, tickers and registrant names using the SEC public ticker map (company_tickers.json).',
-                'Use this first when you only need an identifier (e.g. "what is Nvidia\'s CIK?") or want to confirm which company a name refers to before fetching filings/facts. For filings or financial data use edgar_company_filings_and_facts instead.',
+                'Use this first when you only need an identifier (e.g. "what is Nvidia\'s CIK?") or want to confirm which company a name refers to before fetching filings/facts. Next steps: edgar_list_filings for filings, edgar_get_company_facts for financial data.',
                 'Behavior: read-only HTTP GET to sec.gov, no API token, no cost; the map is cached for 6 hours. Covers SEC registrants with a listed ticker only (no delisted/private filers).',
                 'Returns {count, items}: one "company_match" row per match (cik zero-padded to 10 digits, ticker, name, match = cik|ticker|name, submissions_url), or an "error" row with code COMPANY_NOT_FOUND. Exact ticker/CIK matches win over name substring matches.',
             ].join('\n'),
@@ -90,13 +77,342 @@ function createServer(): McpServer {
         },
     );
 
+    const companyArg = z
+        .string()
+        .min(1)
+        .max(200)
+        .describe('Ticker ("AAPL"), CIK ("320193", zero-padding optional) or company name fragment ("Apple"); best match is used. Call edgar_resolve_company first if the name is ambiguous.');
+    const limitArg = (def: number, max: number) =>
+        z.number().int().min(1).max(max).default(def).describe(`Page size (default ${def}, max ${max})`);
+    const offsetArg = z.number().int().min(0).default(0).describe('Number of items to skip for paging (default 0); use nextOffset from the previous response');
+    const dateArg = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+    async function requireCompany(q: string) {
+        const c = await resolveCik(q);
+        if (!c) throw Object.assign(new Error(`No SEC company matches "${q}"`), { code: 'COMPANY_NOT_FOUND' });
+        return c;
+    }
+    function fail(e: unknown) {
+        const code = (e as { code?: string }).code;
+        if (code) return errorResult(code, (e as Error).message, false);
+        if (e instanceof SecHttpError && e.status === 404) return errorResult('NOT_FOUND', e.message, false);
+        return errorResult('SEC_FETCH_FAILED', e instanceof Error ? e.message : String(e), true);
+    }
+
+    type Recent = Record<string, (string | number)[]>;
+    type Submissions = { cik: string; name: string; tickers?: string[]; filings: { recent: Recent; files: { name: string }[] } };
+    function recentRows(cik: string, r: Recent): Record<string, unknown>[] {
+        const n = (r.accessionNumber ?? []).length;
+        const out: Record<string, unknown>[] = [];
+        for (let i = 0; i < n; i++) {
+            const acc = String(r.accessionNumber[i]);
+            const doc = String(r.primaryDocument[i] ?? '');
+            const base = `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${acc.replace(/-/g, '')}`;
+            out.push({
+                accession_number: acc,
+                form: r.form[i],
+                filing_date: r.filingDate[i],
+                report_date: r.reportDate?.[i] || null,
+                primary_document: doc || null,
+                primary_doc_description: r.primaryDocDescription?.[i] || null,
+                items: r.items?.[i] || null,
+                size_bytes: r.size?.[i] ?? null,
+                document_url: doc ? `${base}/${doc}` : null,
+                index_url: `${base}/${acc}-index.htm`,
+            });
+        }
+        return out;
+    }
+    async function allFilings(cik: string, includeOlder: boolean) {
+        const sub = await secJson<Submissions>(`https://data.sec.gov/submissions/CIK${cik}.json`);
+        let rows = recentRows(cik, sub.filings.recent);
+        if (includeOlder) {
+            for (const f of sub.filings.files ?? []) {
+                rows = rows.concat(recentRows(cik, await secJson<Recent>(`https://data.sec.gov/submissions/${f.name}`)));
+            }
+        }
+        return { sub, rows };
+    }
+
     server.registerTool(
-        'edgar_company_filings_and_facts',
+        'edgar_list_filings',
         {
-            title: 'EDGAR company filings & XBRL facts',
+            title: 'List SEC filings for a company',
             description: [
-                'Fetch structured SEC EDGAR data for US public companies: entity metadata, recent filings (10-K, 10-Q, 8-K, S-1, DEF 14A, ...) with document URLs, XBRL financial facts (Assets, Revenues, NetIncomeLoss, EarningsPerShareDiluted, ...) and optional plain-text excerpts of primary filing documents.',
-                'When to use: an agent needs filing lists/links or reported financial values from official SEC data. mode="filings" for filing history/links, "facts" for financial numbers, "both" for both. Use edgar_resolve_company instead if you only need a CIK. Not for real-time quotes, prices, options, non-US companies or investment advice.',
+                'List a single company\'s SEC EDGAR filings (newest first) with form type, filing/report dates, accession number and direct document URLs, filtered by form type and date range, with limit/offset paging.',
+                'Use to find which filings exist (e.g. "Apple\'s 10-Ks since 2020", "Tesla 8-Ks this year") and to get an accession_number / document_url for edgar_get_filing_document. Not for financial values (use edgar_get_company_facts).',
+                'Behavior: free, read-only GET to data.sec.gov submissions API (no token). By default searches the ~1000 most recent filings; set includeOlder=true to also load the full historical archive (more requests).',
+                'Returns {count,total,offset,hasMore,nextOffset,meta:{cik,name,tickers},items:[{accession_number,form,filing_date,report_date,primary_document,primary_doc_description,items,size_bytes,document_url,index_url}]}. Errors: COMPANY_NOT_FOUND, NOT_FOUND, SEC_FETCH_FAILED.',
+            ].join('\n'),
+            inputSchema: {
+                company: companyArg,
+                formTypes: z.array(z.string().min(1)).max(20).optional().describe('Exact form types to keep, e.g. ["10-K","10-Q"], ["8-K"], ["4"]. Case-insensitive. Omit for all forms.'),
+                since: dateArg.optional().describe('Only filings with filing_date >= this date (YYYY-MM-DD)'),
+                until: dateArg.optional().describe('Only filings with filing_date <= this date (YYYY-MM-DD)'),
+                includeOlder: z.boolean().default(false).describe('Also search filings older than the ~1000 most recent (default false)'),
+                limit: limitArg(20, 200),
+                offset: offsetArg,
+            },
+            outputSchema: pagedOutputSchema,
+            annotations: { title: 'List SEC filings for a company', ...READ_ONLY_OPEN_WORLD },
+        },
+        async ({ company, formTypes, since, until, includeOlder, limit, offset }) => {
+            try {
+                const c = await requireCompany(company);
+                const { sub, rows } = await allFilings(c.cik, includeOlder ?? false);
+                const forms = formTypes?.length ? new Set(formTypes.map((f) => f.toUpperCase())) : undefined;
+                const filtered = rows
+                    .filter((r) => !forms || forms.has(String(r.form).toUpperCase()))
+                    .filter((r) => !since || String(r.filing_date) >= since)
+                    .filter((r) => !until || String(r.filing_date) <= until)
+                    .sort((a, b) => String(b.filing_date).localeCompare(String(a.filing_date)));
+                return pagedResult(filtered, offset ?? 0, limit ?? 20, {
+                    cik: c.cik,
+                    name: sub.name,
+                    tickers: sub.tickers ?? [],
+                    source_url: `https://data.sec.gov/submissions/CIK${c.cik}.json`,
+                });
+            } catch (e) {
+                return fail(e);
+            }
+        },
+    );
+
+    server.registerTool(
+        'edgar_get_filing_document',
+        {
+            title: 'Get SEC filing document text',
+            description: [
+                'Fetch the text of an SEC filing document from the sec.gov EDGAR archives, converted from HTML to plain text, returned in character-paged chunks.',
+                'Use to read the actual content of a filing (risk factors, MD&A, 8-K press release, ...). Identify the document by documentUrl (from edgar_list_filings), or by company + accessionNumber (the primary document is used unless document names another file in the filing).',
+                'Behavior: free, read-only GET to www.sec.gov (no token). Large 10-Ks can exceed 500k characters; read them in pages with offset/maxChars (nextOffset is returned). Only https://www.sec.gov/Archives/ URLs are accepted.',
+                'Returns {document_url,content_type,total_chars,offset,returned_chars,hasMore,nextOffset,text}. Errors: INVALID_URL, COMPANY_NOT_FOUND, FILING_NOT_FOUND, NOT_FOUND, SEC_FETCH_FAILED.',
+            ].join('\n'),
+            inputSchema: {
+                documentUrl: z.string().url().optional().describe('Full sec.gov Archives URL, e.g. https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm'),
+                company: companyArg.optional(),
+                accessionNumber: z.string().regex(/^\d{10}-?\d{2}-?\d{6}$/).optional().describe('Accession number, e.g. "0000320193-24-000123" (requires company)'),
+                document: z.string().max(200).optional().describe('File name inside the filing to fetch instead of the primary document, e.g. "ex99-1.htm"'),
+                offset: z.number().int().min(0).default(0).describe('Character offset to start from (default 0)'),
+                maxChars: z.number().int().min(500).max(100000).default(20000).describe('Max characters to return (default 20000, max 100000)'),
+                raw: z.boolean().default(false).describe('Return raw HTML instead of extracted text (default false)'),
+            },
+            outputSchema: {
+                document_url: z.string(),
+                content_type: z.string(),
+                total_chars: z.number().int(),
+                offset: z.number().int(),
+                returned_chars: z.number().int(),
+                hasMore: z.boolean(),
+                nextOffset: z.number().int().nullable(),
+                text: z.string(),
+            },
+            annotations: { title: 'Get SEC filing document text', ...READ_ONLY_OPEN_WORLD },
+        },
+        async ({ documentUrl, company, accessionNumber, document, offset, maxChars, raw }) => {
+            try {
+                let url = documentUrl;
+                if (!url) {
+                    if (!company || !accessionNumber) return errorResult('INVALID_INPUT', 'Provide documentUrl, or company + accessionNumber.');
+                    const c = await requireCompany(company);
+                    const digits = accessionNumber.replace(/-/g, '');
+                    const acc = `${digits.slice(0, 10)}-${digits.slice(10, 12)}-${digits.slice(12)}`;
+                    const base = `https://www.sec.gov/Archives/edgar/data/${Number(c.cik)}/${digits}`;
+                    if (document) url = `${base}/${document}`;
+                    else {
+                        let hit = (await allFilings(c.cik, false)).rows.find((r) => r.accession_number === acc);
+                        if (!hit) hit = (await allFilings(c.cik, true)).rows.find((r) => r.accession_number === acc);
+                        if (!hit) return errorResult('FILING_NOT_FOUND', `Accession ${acc} not found for CIK ${c.cik}`);
+                        url = String(hit.document_url ?? `${base}/${acc}.txt`);
+                    }
+                }
+                if (!/^https:\/\/www\.sec\.gov\/Archives\//.test(url)) return errorResult('INVALID_URL', 'documentUrl must start with https://www.sec.gov/Archives/');
+                const { text: body, contentType } = await secText(url);
+                const full = raw || !/html|xml/i.test(contentType + url.slice(-5)) ? body : htmlToText(body);
+                const start = Math.min(offset ?? 0, full.length);
+                const chunk = full.slice(start, start + (maxChars ?? 20000));
+                const hasMore = start + chunk.length < full.length;
+                return jsonResult({
+                    document_url: url,
+                    content_type: contentType,
+                    total_chars: full.length,
+                    offset: start,
+                    returned_chars: chunk.length,
+                    hasMore,
+                    nextOffset: hasMore ? start + chunk.length : null,
+                    text: chunk,
+                });
+            } catch (e) {
+                return fail(e);
+            }
+        },
+    );
+
+    type FactPoint = { val: number; start?: string; end: string; fy?: number; fp?: string; form?: string; filed?: string; accn?: string; frame?: string };
+    type CompanyFacts = { cik: number; entityName: string; facts: Record<string, Record<string, { label?: string; description?: string; units: Record<string, FactPoint[]> }>> };
+
+    server.registerTool(
+        'edgar_get_company_facts',
+        {
+            title: 'Get XBRL financial facts for a company',
+            description: [
+                'Get reported XBRL financial data (us-gaap, ifrs-full, dei, ...) for one company from the SEC companyfacts API, e.g. Assets, Revenues, NetIncomeLoss, EarningsPerShareDiluted.',
+                'Two modes: (1) omit concepts to LIST the concepts the company reports (name, label, units, number of values) so you can pick exact names; (2) pass concepts to get their time-series values, newest first, optionally filtered by form (10-K/10-Q), fiscal period or date. Use edgar_get_concept_across_companies to compare one concept across many companies.',
+                'Behavior: free, read-only GET to data.sec.gov (no token). Concept names are case-sensitive. Values are as reported (duplicates across filings possible; set dedupe=true to keep one value per period).',
+                'Returns paged {count,total,offset,hasMore,nextOffset,meta:{cik,name},items}. List mode items: {taxonomy,concept,label,units,values}. Values mode items: {taxonomy,concept,label,unit,value,start,end,fy,fp,form,filed,accession_number,frame}. Errors: COMPANY_NOT_FOUND, NOT_FOUND (no XBRL data), SEC_FETCH_FAILED.',
+            ].join('\n'),
+            inputSchema: {
+                company: companyArg,
+                concepts: z.array(z.string().min(1)).max(25).optional().describe('Exact concept names, e.g. ["Revenues","NetIncomeLoss"]. Omit to list available concepts.'),
+                taxonomy: z.string().optional().describe('Restrict to a taxonomy: "us-gaap", "ifrs-full", "dei", "srt". Omit for all.'),
+                search: z.string().optional().describe('List mode only: case-insensitive substring filter on concept name or label, e.g. "revenue"'),
+                forms: z.array(z.string()).optional().describe('Values mode: keep only values from these forms, e.g. ["10-K"]'),
+                fiscalPeriod: z.enum(['FY', 'Q1', 'Q2', 'Q3', 'Q4']).optional().describe('Values mode: keep only this fiscal period'),
+                since: dateArg.optional().describe('Values mode: keep values whose period end >= YYYY-MM-DD'),
+                dedupe: z.boolean().default(true).describe('Values mode: keep one value per concept/unit/period (latest filed). Default true.'),
+                limit: limitArg(50, 500),
+                offset: offsetArg,
+            },
+            outputSchema: pagedOutputSchema,
+            annotations: { title: 'Get XBRL financial facts for a company', ...READ_ONLY_OPEN_WORLD },
+        },
+        async ({ company, concepts, taxonomy, search, forms, fiscalPeriod, since, dedupe, limit, offset }) => {
+            try {
+                const c = await requireCompany(company);
+                const url = `https://data.sec.gov/api/xbrl/companyfacts/CIK${c.cik}.json`;
+                const data = await secJson<CompanyFacts>(url);
+                const meta = { cik: c.cik, name: data.entityName, source_url: url };
+                const taxes = Object.entries(data.facts ?? {}).filter(([t]) => !taxonomy || t === taxonomy);
+                if (!concepts?.length) {
+                    const s = search?.toLowerCase();
+                    const rows = taxes
+                        .flatMap(([t, cs]) =>
+                            Object.entries(cs).map(([name, v]) => ({
+                                taxonomy: t,
+                                concept: name,
+                                label: v.label ?? null,
+                                units: Object.keys(v.units),
+                                values: Object.values(v.units).reduce((n, a) => n + a.length, 0),
+                            })),
+                        )
+                        .filter((r) => !s || r.concept.toLowerCase().includes(s) || String(r.label ?? '').toLowerCase().includes(s))
+                        .sort((a, b) => a.concept.localeCompare(b.concept));
+                    return pagedResult(rows, offset ?? 0, limit ?? 50, { ...meta, mode: 'list_concepts' });
+                }
+                const formSet = forms?.length ? new Set(forms.map((f) => f.toUpperCase())) : undefined;
+                let rows: Record<string, unknown>[] = [];
+                const missing: string[] = [];
+                for (const concept of concepts) {
+                    const found = taxes.filter(([, cs]) => cs[concept]);
+                    if (!found.length) missing.push(concept);
+                    for (const [t, cs] of found) {
+                        const v = cs[concept];
+                        for (const [unit, pts] of Object.entries(v.units)) {
+                            let list = pts
+                                .filter((p) => !formSet || formSet.has(String(p.form).toUpperCase()))
+                                .filter((p) => !fiscalPeriod || p.fp === fiscalPeriod)
+                                .filter((p) => !since || p.end >= since);
+                            if (dedupe ?? true) {
+                                const m = new Map<string, FactPoint>();
+                                for (const p of list) {
+                                    const k = `${p.start ?? ''}|${p.end}`;
+                                    const prev = m.get(k);
+                                    if (!prev || String(p.filed) > String(prev.filed)) m.set(k, p);
+                                }
+                                list = [...m.values()];
+                            }
+                            rows = rows.concat(
+                                list.map((p) => ({
+                                    taxonomy: t,
+                                    concept,
+                                    label: v.label ?? null,
+                                    unit,
+                                    value: p.val,
+                                    start: p.start ?? null,
+                                    end: p.end,
+                                    fy: p.fy ?? null,
+                                    fp: p.fp ?? null,
+                                    form: p.form ?? null,
+                                    filed: p.filed ?? null,
+                                    accession_number: p.accn ?? null,
+                                    frame: p.frame ?? null,
+                                })),
+                            );
+                        }
+                    }
+                }
+                rows.sort((a, b) => String(b.end).localeCompare(String(a.end)) || String(a.concept).localeCompare(String(b.concept)));
+                return pagedResult(rows, offset ?? 0, limit ?? 50, { ...meta, mode: 'values', missing_concepts: missing });
+            } catch (e) {
+                return fail(e);
+            }
+        },
+    );
+
+    type Frame = { taxonomy: string; tag: string; ccp: string; uom: string; label: string; pts: number; data: { accn: string; cik: number; entityName: string; loc?: string; start?: string; end: string; val: number }[] };
+
+    server.registerTool(
+        'edgar_get_concept_across_companies',
+        {
+            title: 'Compare one XBRL concept across all companies',
+            description: [
+                'Cross-company query: get one XBRL concept (e.g. Revenues, Assets, NetIncomeLoss) for one calendar period for every SEC filer that reported it, using the SEC frames API. Sortable and paged.',
+                'Use for screening and peer comparison ("largest companies by total assets at end of 2023", "net income of all filers in CY2023"). For one company\'s history use edgar_get_company_facts.',
+                'Period format: "CY2023" (annual duration), "CY2023Q2" (quarterly duration), "CY2023Q4I" (instant, for balance-sheet items like Assets). Unit e.g. "USD", "USD-per-shares", "shares", "pure".',
+                'Behavior: free, read-only GET to data.sec.gov (no token). Returns paged {count,total,offset,hasMore,nextOffset,meta:{taxonomy,concept,label,unit,period,source_url},items:[{rank,cik,entity_name,value,start,end,location,accession_number}]}. Optional ciks filter restricts to given companies. Errors: NOT_FOUND (no such concept/unit/period frame), SEC_FETCH_FAILED.',
+            ].join('\n'),
+            inputSchema: {
+                concept: z.string().min(1).describe('Exact concept name, case-sensitive, e.g. "Assets", "Revenues", "NetIncomeLoss"'),
+                period: z.string().regex(/^CY\d{4}(Q[1-4]I?)?$/).describe('"CY2023", "CY2023Q2" or "CY2023Q4I" (instant)'),
+                unit: z.string().default('USD').describe('Unit of measure (default "USD"; e.g. "USD-per-shares", "shares")'),
+                taxonomy: z.string().default('us-gaap').describe('Taxonomy (default "us-gaap"; also "ifrs-full", "dei", "srt")'),
+                sort: z.enum(['value_desc', 'value_asc', 'name']).default('value_desc').describe('Sort order (default value_desc)'),
+                companies: z.array(z.string().min(1)).max(50).optional().describe('Optional tickers/CIKs/names to restrict results to'),
+                limit: limitArg(25, 500),
+                offset: offsetArg,
+            },
+            outputSchema: pagedOutputSchema,
+            annotations: { title: 'Compare one XBRL concept across all companies', ...READ_ONLY_OPEN_WORLD },
+        },
+        async ({ concept, period, unit, taxonomy, sort, companies, limit, offset }) => {
+            try {
+                const url = `https://data.sec.gov/api/xbrl/frames/${taxonomy ?? 'us-gaap'}/${concept}/${unit ?? 'USD'}/${period}.json`;
+                const f = await secJson<Frame>(url);
+                let data = f.data;
+                if (companies?.length) {
+                    const ciks = new Set<number>();
+                    for (const q of companies) {
+                        const c = await resolveCik(q);
+                        if (c) ciks.add(Number(c.cik));
+                    }
+                    data = data.filter((d) => ciks.has(d.cik));
+                }
+                const s = sort ?? 'value_desc';
+                data = [...data].sort((a, b) => (s === 'name' ? a.entityName.localeCompare(b.entityName) : s === 'value_asc' ? a.val - b.val : b.val - a.val));
+                const rows = data.map((d, i) => ({
+                    rank: i + 1,
+                    cik: padCik(d.cik),
+                    entity_name: d.entityName,
+                    value: d.val,
+                    start: d.start ?? null,
+                    end: d.end,
+                    location: d.loc ?? null,
+                    accession_number: d.accn,
+                }));
+                return pagedResult(rows, offset ?? 0, limit ?? 25, { taxonomy: f.taxonomy, concept: f.tag, label: f.label, unit: f.uom, period: f.ccp, source_url: url });
+            } catch (e) {
+                return fail(e);
+            }
+        },
+    );
+
+    server.registerTool(
+        'edgar_batch_export',
+        {
+            title: 'Batch export filings & facts via Apify Actor (paid)',
+            description: [
+                'Bulk export (paid, via Apify) of structured SEC EDGAR data for up to 50 US companies in one call: entity metadata, recent filings (10-K, 10-Q, 8-K, S-1, DEF 14A, ...) with document URLs, XBRL financial facts (Assets, Revenues, NetIncomeLoss, EarningsPerShareDiluted, ...) and optional plain-text excerpts of primary filing documents.',
+                'When to use: an agent needs filing lists/links or reported financial values from official SEC data. mode="filings" for filing history/links, "facts" for financial numbers, "both" for both. Prefer the free single-purpose tools (edgar_resolve_company, edgar_list_filings, edgar_get_company_facts, edgar_get_filing_document) for interactive lookups; use this tool for multi-company batch exports billed to your Apify account. Not for real-time quotes, prices, options, non-US companies or investment advice.',
                 'Behavior: read-only; runs the Fairquery Apify Actor fairquery/edgar-company-facts-filings via the Apify API, which queries sec.gov (throttled to <=5 req/s). Requires the APIFY_TOKEN environment variable. Typical run 5-60 s; the call waits up to ~5 minutes.',
                 'Cost (billed to the Apify account, pay per event): $0.00005 per run, $0.002 per resolved company, $0.002 per filing row, $0.0005 per fact row, $0.003 per text excerpt. Keep maxFilingsPerCompany, metrics and maxFactsPerMetric small to limit cost; e.g. 1 company, 5 filings, 3 metrics x 4 values ~ $0.018.',
                 'Returns {count, items}. Every row has schema_version, type (company | filing | fact | text_excerpt | error), source_url and scraped_at. filing rows: cik, ticker, form, filing_date, report_date, accession_number, primary_document, document_url. fact rows: taxonomy, concept, label, unit, value, start, end, filed, form. error rows: code (INPUT_EMPTY, COMPANY_NOT_FOUND, RESOLVE_FAILED, SUBMISSIONS_FETCH_FAILED, FACTS_FETCH_FAILED, EXCERPT_FETCH_FAILED), message, retryable. Unresolvable companies produce an error row, not a failure.',
@@ -151,7 +467,7 @@ function createServer(): McpServer {
                     .describe('Max characters per excerpt (default 2000). Only used with includeTextExcerpt=true.'),
             },
             outputSchema: rowsOutputSchema,
-            annotations: { title: 'EDGAR company filings & XBRL facts', ...READ_ONLY_OPEN_WORLD },
+            annotations: { title: 'Batch export filings & facts via Apify Actor (paid)', ...READ_ONLY_OPEN_WORLD },
         },
         async (args) => proxyActor(ACTOR_ID, compact({ ...args, mode: args.mode ?? 'both' })),
     );

@@ -85,3 +85,33 @@ export function compact(args: Record<string, unknown>): Record<string, unknown> 
     for (const [k, v] of Object.entries(args)) if (v !== undefined) out[k] = v;
     return out;
 }
+
+/** Output schema for paged free tools. */
+export const pagedOutputSchema = {
+    count: z.number().int().describe('Number of items in this page'),
+    total: z.number().int().describe('Total items matching the filters (before paging)'),
+    offset: z.number().int().describe('Offset of the first item in this page'),
+    hasMore: z.boolean().describe('True if more items exist after this page'),
+    nextOffset: z.number().int().nullable().describe('Offset to pass for the next page, or null'),
+    meta: z.record(z.string(), z.unknown()).optional().describe('Tool-specific context (company, source_url, ...)'),
+    items: z.array(z.record(z.string(), z.unknown())).describe('Result rows for this page'),
+};
+
+export function pagedResult<T>(all: T[], offset: number, limit: number, meta?: Record<string, unknown>): ToolResult {
+    const items = all.slice(offset, offset + limit) as Record<string, unknown>[];
+    const hasMore = offset + items.length < all.length;
+    const structured = {
+        count: items.length,
+        total: all.length,
+        offset,
+        hasMore,
+        nextOffset: hasMore ? offset + items.length : null,
+        ...(meta ? { meta } : {}),
+        items,
+    };
+    return { content: [{ type: 'text', text: JSON.stringify(structured, null, 2) }], structuredContent: structured };
+}
+
+export function jsonResult(obj: Record<string, unknown>): ToolResult {
+    return { content: [{ type: 'text', text: JSON.stringify(obj, null, 2) }], structuredContent: obj };
+}

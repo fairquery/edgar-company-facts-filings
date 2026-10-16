@@ -46,7 +46,20 @@ Clients without OAuth can add `"headers": {"Authorization": "Bearer <APIFY_TOKEN
 
 ## Local stdio MCP server
 
-This repo also ships a **stdio MCP server** (TypeScript, `@modelcontextprotocol/sdk`) under [`mcp/`](./mcp). It exposes `edgar_company_filings_and_facts` (runs the same Apify Actor via the Apify API; requires `APIFY_TOKEN`) and the free `edgar_resolve_company` (ticker/name → CIK straight from SEC, no token). `initialize` and `tools/list` work **without** a token.
+This repo also ships a **stdio MCP server** (TypeScript, `@modelcontextprotocol/sdk`) under [`mcp/`](./mcp) with single-purpose tools. Five are **free** and call sec.gov directly (no token, brand User-Agent `Fairquery`, throttled to ≤5 req/s); one optional bulk tool runs the Apify Actor. `initialize` and `tools/list` work **without** a token.
+
+| Tool | What it does | Paging | Cost |
+|---|---|---|---|
+| `edgar_resolve_company` | Ticker / CIK / name fragment → SEC CIK, ticker, registrant name | – | free |
+| `edgar_list_filings` | One company's filings, filter by `formTypes`, `since`, `until`; optional full history | `limit`/`offset` | free |
+| `edgar_get_filing_document` | Primary (or named) filing document from sec.gov Archives as plain text, by URL or accession number | `offset`/`maxChars` (chars) | free |
+| `edgar_get_company_facts` | XBRL facts: list available concepts (with `search`) or time series for `concepts`, filter by form / fiscal period / date | `limit`/`offset` | free |
+| `edgar_get_concept_across_companies` | One concept for one period across all filers (SEC frames API), sortable, optional company filter | `limit`/`offset` | free |
+| `edgar_batch_export` | Multi-company export of filings + facts + excerpts via the Apify Actor | – | pay-per-event, needs `APIFY_TOKEN` |
+
+Paged tools return `{count, total, offset, hasMore, nextOffset, meta, items}`. Errors are returned as `{error, message, retryable}` with codes such as `COMPANY_NOT_FOUND`, `FILING_NOT_FOUND`, `NOT_FOUND`, `INVALID_URL`, `SEC_FETCH_FAILED`.
+
+Live test of all free tools: `cd mcp && npm run build && node scripts/live-test.mjs`.
 
 ### Install & run (Node)
 
@@ -54,7 +67,8 @@ This repo also ships a **stdio MCP server** (TypeScript, `@modelcontextprotocol/
 cd mcp
 npm install
 npm run build
-APIFY_TOKEN=your_token node dist/index.js
+node dist/index.js            # free tools
+APIFY_TOKEN=your_token node dist/index.js   # also enables edgar_batch_export
 ```
 
 ### MCP client config (Cursor / Claude Desktop)
