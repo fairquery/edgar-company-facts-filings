@@ -83,7 +83,7 @@ docker build -t fairquery-edgar-mcp .
 docker run -i -e APIFY_TOKEN=your_token fairquery-edgar-mcp
 ```
 
-For Glama, paste the repo-root Dockerfile from [`Dockerfile.mcp`](./Dockerfile.mcp) when adding the server (build context = repository root).
+The repo-root `Dockerfile` builds this stdio MCP server (build context = repository root) and is what Glama uses. The Apify Actor image is built from [`.actor/Dockerfile`](./.actor/Dockerfile).
 
 ### Glama
 
