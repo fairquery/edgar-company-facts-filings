@@ -90,6 +90,33 @@ describe('parseFacts', () => {
     });
 });
 
+describe('parseFacts ordering', () => {
+    it('returns current-period values before prior-year comparatives from the same filing', () => {
+        const rows = parseFacts(
+            company,
+            {
+                facts: {
+                    'us-gaap': {
+                        NetIncomeLoss: {
+                            label: 'Net Income',
+                            units: {
+                                USD: [
+                                    { val: 1, start: '2024-03-31', end: '2024-06-29', filed: '2024-08-02', accn: 'old' },
+                                    { val: 2, start: '2024-03-31', end: '2024-06-29', filed: '2025-08-01', accn: 'q3' },
+                                    { val: 3, start: '2025-03-30', end: '2025-06-28', filed: '2025-08-01', accn: 'q3' },
+                                    { val: 4, start: '2024-09-29', end: '2025-06-28', filed: '2025-08-01', accn: 'q3' },
+                                ],
+                            },
+                        },
+                    },
+                },
+            },
+            { metrics: ['NetIncomeLoss'], maxFactsPerMetric: 3, nowIso: '2026-10-15T00:00:00.000Z' },
+        );
+        expect(rows.map((r) => r.value)).toEqual([3, 4, 2]);
+    });
+});
+
 describe('htmlToExcerpt', () => {
     it('strips tags and truncates', () => {
         const out = htmlToExcerpt('<html><script>x()</script><body>Hello&nbsp;<b>world</b></body></html>', 8);

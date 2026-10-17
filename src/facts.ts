@@ -55,13 +55,24 @@ export function parseFacts(
             if (!wanted.has(concept.toLowerCase())) continue;
             const units = meta.units || {};
             for (const [unit, values] of Object.entries(units)) {
-                // Most recent first by filed/end
-                const sorted = [...values].sort((a, b) => {
-                    const af = a.filed || a.end || '';
-                    const bf = b.filed || b.end || '';
-                    return bf.localeCompare(af);
-                });
-                const slice = sorted.slice(0, maxPer);
+                // Most recent period first (end date desc), then latest filing (restatements win), then the
+                // shorter period (quarter before year-to-date). A value re-reported in later filings is kept once,
+                // from the latest filing, so prior-year comparatives in a new 10-Q don't crowd out current values.
+                const sorted = [...values].sort(
+                    (a, b) =>
+                        (b.end || '').localeCompare(a.end || '') ||
+                        (b.filed || '').localeCompare(a.filed || '') ||
+                        (b.start || '').localeCompare(a.start || ''),
+                );
+                const seen = new Set<string>();
+                const slice = sorted
+                    .filter((v) => {
+                        const k = `${v.start || ''}|${v.end || ''}`;
+                        if (seen.has(k)) return false;
+                        seen.add(k);
+                        return true;
+                    })
+                    .slice(0, maxPer);
                 for (const v of slice) {
                     rows.push({
                         schema_version: SCHEMA_VERSION,

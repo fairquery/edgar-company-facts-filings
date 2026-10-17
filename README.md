@@ -177,6 +177,8 @@ Codes include: `INPUT_EMPTY`, `COMPANY_NOT_FOUND`, `RESOLVE_FAILED`, `SUBMISSION
 
 Key-value store record **`RUN_SUMMARY`** with counts, SEC request total, and echoed input.
 
+**Fact order:** for each concept and unit, fact rows are sorted by period end date (newest first), then by filing date. A value that later filings re-report (for example the prior-year column of a 10-Q) is returned once, from the latest filing, so `maxFactsPerMetric` gives you the most recent periods.
+
 ## Pricing
 
 No subscription. You pay for these events:
@@ -206,7 +208,7 @@ Default **256 MB**, timeout 300s. HTTP-only (no browser).
 | API call rejected: `companies` is required | The input had no companies. The sample tickers in the Console form are prefill only and are not sent with API calls. |
 | `COMPANY_NOT_FOUND` | The ticker, CIK or name fragment is not in the SEC ticker map (for example a non-US or delisted company). Try the CIK. These rows are free. |
 | Fewer filings than expected | `formTypes` defaults to 10-K, 10-Q and 8-K. Pass `[]` for all forms, and check `since` and `maxFilingsPerCompany`. |
-| A metric is missing from the facts | The company does not report that us-gaap concept (for example `Revenues` vs `RevenueFromContractWithCustomerExcludingAssessedTax`). Use the exact XBRL concept name. |
+| A metric is missing from the facts | The company does not report that us-gaap concept (for example `Revenues` vs `RevenueFromContractWithCustomerExcludingAssessedTax`). Use the exact XBRL concept name. Some concepts stop being reported: Apple's `Revenues` values end in 2018, while `RevenueFromContractWithCustomerExcludingAssessedTax` is current. |
 | `SUBMISSIONS_FETCH_FAILED` / `FACTS_FETCH_FAILED` | SEC servers were slow or rate-limiting (`retryable: true`). The Actor stays at or below 5 requests/second; re-run later. |
 
 ## FAQ
@@ -260,6 +262,7 @@ Data originates from the U.S. Securities and Exchange Commission EDGAR system. F
 
 ## Links
 
+- Guide with a real run: [SEC EDGAR company facts API: XBRL financials and filings by ticker](https://fairquery.github.io/posts/sec-edgar-api-company-facts-xbrl-filings-by-ticker/)
 - Apify Store: https://apify.com/fairquery/edgar-company-facts-filings
 - MCP: https://mcp.apify.com/?tools=fetch-actor-details,fairquery/edgar-company-facts-filings
 - GitHub: https://github.com/fairquery/edgar-company-facts-filings
