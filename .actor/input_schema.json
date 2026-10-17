@@ -14,11 +14,11 @@
                 "AAPL",
                 "MSFT"
             ],
-            "minItems": 1,
-            "default": [
+            "example": [
                 "AAPL",
                 "MSFT"
-            ]
+            ],
+            "minItems": 1
         },
         "mode": {
             "title": "Mode",

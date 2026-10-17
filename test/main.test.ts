@@ -98,3 +98,14 @@ describe('htmlToExcerpt', () => {
         expect(out.length).toBeLessThanOrEqual(9); // 8 + ellipsis
     });
 });
+
+describe('input schema', () => {
+    it('keeps sample companies as prefill/example only, never as a billable default', async () => {
+        const { readFileSync } = await import('node:fs');
+        const schema = JSON.parse(readFileSync(new URL('../.actor/input_schema.json', import.meta.url), 'utf8'));
+        const field = schema.properties.companies;
+        expect(field.default).toBeUndefined();
+        expect(Array.isArray(field.prefill) && field.prefill.length > 0).toBe(true);
+        expect(field.example).toEqual(field.prefill);
+    });
+});
