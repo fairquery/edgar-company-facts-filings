@@ -434,18 +434,18 @@ function createServer(): McpServer {
                 'Bulk export (paid, via Apify) of structured SEC EDGAR data for up to 50 US companies in one call: entity metadata, recent filings (10-K, 10-Q, 8-K, S-1, DEF 14A, ...) with document URLs, XBRL financial facts (Assets, Revenues, NetIncomeLoss, EarningsPerShareDiluted, ...) and optional plain-text excerpts of primary filing documents.',
                 'WHEN TO USE: an agent needs filing lists/links or reported financial values from official SEC data. mode="filings" for filing history/links, "facts" for financial numbers, "both" for both. Prefer the free single-purpose tools (edgar_resolve_company, edgar_list_filings, edgar_get_company_facts, edgar_get_filing_document) for interactive lookups; use this tool for multi-company batch exports billed to your Apify account. Not for real-time quotes, prices, options, non-US companies or investment advice.',
                 'BEHAVIOR: read-only; runs the Fairquery Apify Actor fairquery/edgar-company-facts-filings via the Apify API, which queries sec.gov (throttled to <=5 req/s). Requires the APIFY_TOKEN environment variable. Typical run 5-60 s; the call waits up to ~5 minutes.',
-                'COST: paid (billed to your Apify account, pay-per-event): $0.00005 per run, $0.002 per resolved company, $0.002 per filing row, $0.0005 per fact row, $0.003 per text excerpt. Keep maxFilingsPerCompany, metrics and maxFactsPerMetric small to limit cost; e.g. 1 company, 5 filings, 3 metrics x 4 values ~ $0.018.',
+                'COST: paid (billed to your Apify account, pay-per-event): $0.00005 per run, $0.0015 per resolved company, $0.001 per filing row, $0.0002 per fact row, $0.002 per text excerpt. Keep maxFilingsPerCompany, metrics and maxFactsPerMetric small to limit cost; e.g. 1 company, 5 filings, 3 metrics x 4 values ~ $0.009.',
                 'RETURNS: {count, items}. Every row has schema_version, type (company | filing | fact | text_excerpt | error), source_url and scraped_at. filing rows: cik, ticker, form, filing_date, report_date, accession_number, primary_document, document_url. fact rows: taxonomy, concept, label, unit, value, start, end, filed, form. error rows: code (INPUT_EMPTY, COMPANY_NOT_FOUND, RESOLVE_FAILED, SUBMISSIONS_FETCH_FAILED, FACTS_FETCH_FAILED, EXCERPT_FETCH_FAILED), message, retryable. Unresolvable companies produce an error row, not a failure.',
                 "WHEN NOT TO USE: single-company or interactive lookups - use the free tools above (same SEC data, no cost).",
                 'PARAMETERS: companies: each entry is resolved by the Actor as ticker, CIK or name fragment and billed once when resolved; unresolvable entries yield a free COMPANY_NOT_FOUND row. mode controls which other parameters apply: formTypes, since, maxFilingsPerCompany and includeTextExcerpt/excerptMaxChars only affect "filings"/"both"; metrics and maxFactsPerMetric only affect "facts"/"both". Billed rows per call = resolved companies + companies x min(maxFilingsPerCompany, matching filings) + companies x metrics x units x maxFactsPerMetric (+ one excerpt per filing row when includeTextExcerpt=true), so size those three numbers first. Omitted optional fields take the Actor\'s input defaults: formTypes ["10-K","10-Q","8-K"] (pass [] for every form type), maxFilingsPerCompany 5, metrics Assets, NetIncomeLoss, EarningsPerShareDiluted, Revenues (pass [] for a built-in 10-concept set), maxFactsPerMetric 4, excerptMaxChars 2000. since compares filing_date (inclusive); metrics are case-sensitive us-gaap/dei names.',
-                "EXAMPLE: {\"companies\":[\"AAPL\",\"MSFT\"],\"mode\":\"facts\",\"metrics\":[\"Revenues\"],\"maxFactsPerMetric\":4} -> company + fact rows (~$0.02).",
+                "EXAMPLE: {\"companies\":[\"AAPL\",\"MSFT\"],\"mode\":\"facts\",\"metrics\":[\"Revenues\"],\"maxFactsPerMetric\":4} -> company + fact rows (~$0.005).",
             ].join('\n'),
             inputSchema: {
                 companies: z
                     .array(z.string().min(1))
                     .min(1)
                     .max(50)
-                    .describe('Required. 1-50 tickers ("AAPL"), CIKs ("320193") or company name fragments ("Apple"); $0.002 per resolved company. Example: ["AAPL","MSFT"]'),
+                    .describe('Required. 1-50 tickers ("AAPL"), CIKs ("320193") or company name fragments ("Apple"); $0.0015 per resolved company. Example: ["AAPL","MSFT"]'),
                 mode: z
                     .enum(['filings', 'facts', 'both'])
                     .default('both')
@@ -465,7 +465,7 @@ function createServer(): McpServer {
                     .min(1)
                     .max(100)
                     .optional()
-                    .describe('Optional integer 1-100, default 5 (Actor default). Max filing rows per company, newest first; each row is billed $0.002. Example: 3'),
+                    .describe('Optional integer 1-100, default 5 (Actor default). Max filing rows per company, newest first; each row is billed $0.001. Example: 3'),
                 metrics: z
                     .array(z.string())
                     .optional()
@@ -476,11 +476,11 @@ function createServer(): McpServer {
                     .min(1)
                     .max(50)
                     .optional()
-                    .describe('Optional integer 1-50, default 4 (Actor default). Most-recent values kept per concept and unit; each fact row is billed $0.0005. Example: 4'),
+                    .describe('Optional integer 1-50, default 4 (Actor default). Most-recent values kept per concept and unit; each fact row is billed $0.0002. Example: 4'),
                 includeTextExcerpt: z
                     .boolean()
                     .optional()
-                    .describe('Optional boolean, default false. true adds a plain-text excerpt row of each filing\'s primary document ($0.003 each, slower). Ignored when mode="facts".'),
+                    .describe('Optional boolean, default false. true adds a plain-text excerpt row of each filing\'s primary document ($0.002 each, slower). Ignored when mode="facts".'),
                 excerptMaxChars: z
                     .number()
                     .int()

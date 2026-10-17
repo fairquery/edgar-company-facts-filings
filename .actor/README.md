@@ -1,6 +1,6 @@
 # EDGAR Company Facts & Filings for Agents
 
-**Resolves US tickers, CIKs or company names via SEC EDGAR and returns filings and XBRL financial facts as structured rows, from $2 per 1,000 companies.** You pay $0.002 per resolved company, $0.002 per filing row, $0.0005 per fact row and $0.003 per text excerpt. Error rows are free. Example: 2 companies with 5 filings each and 16 fact rows each cost 2 × $0.002 + 10 × $0.002 + 32 × $0.0005 = **$0.04**, plus Apify's $0.00005 Actor-start fee.
+**Resolves US tickers, CIKs or company names via SEC EDGAR and returns filings and XBRL financial facts as structured rows, from $1.50 per 1,000 companies.** You pay $0.0015 per resolved company, $0.001 per filing row, $0.0002 per fact row and $0.002 per text excerpt. Error rows are free. Example: 2 companies with 5 filings each and 16 fact rows each cost 2 × $0.0015 + 10 × $0.001 + 32 × $0.0002 = **$0.02**, plus Apify's $0.00005 Actor-start fee.
 
 Public Apify Actor that turns the SEC’s public EDGAR data into clean, structured rows for AI agents and MCP clients. Look up by **ticker**, **CIK**, or **company name**. Returns official entity metadata, recent filings (10-K, 10-Q, 8-K and more) with document URLs, XBRL company facts (Assets, Revenues, NetIncomeLoss, diluted EPS and more), and optional plain-text excerpts. Every row carries a schema version, a source SEC URL, and a timestamp. Errors are machine-readable codes.
 
@@ -122,15 +122,15 @@ No subscription. You pay for these events:
 
 | Event | Price | When |
 | --- | --- | --- |
-| `company-resolved` | $0.002 | Each successfully resolved company row |
-| `filing` | $0.002 | Each filing row |
-| `financial-fact` | $0.0005 | Each XBRL fact row |
-| `text-excerpt` | $0.003 | Each primary-document text excerpt row |
+| `company-resolved` | $0.0015 | Each successfully resolved company row |
+| `filing` | $0.001 | Each filing row |
+| `financial-fact` | $0.0002 | Each XBRL fact row |
+| `text-excerpt` | $0.002 | Each primary-document text excerpt row |
 | `apify-actor-start` | $0.00005 | Once per run, per GB of memory (Apify default event) |
 
 Error rows (`COMPANY_NOT_FOUND`, `FACTS_FETCH_FAILED`, …) are **not charged**.
 
-**Worked example:** `{"companies": ["AAPL", "MSFT"], "mode": "both", "maxFilingsPerCompany": 5, "metrics": ["Assets", "NetIncomeLoss", "EarningsPerShareDiluted", "Revenues"], "maxFactsPerMetric": 4}` returns 2 company rows, up to 10 filing rows and up to 32 fact rows: 2 × $0.002 + 10 × $0.002 + 32 × $0.0005 = **$0.04** at most, plus $0.00005. Turning on `includeTextExcerpt` adds $0.003 per filing.
+**Worked example:** `{"companies": ["AAPL", "MSFT"], "mode": "both", "maxFilingsPerCompany": 5, "metrics": ["Assets", "NetIncomeLoss", "EarningsPerShareDiluted", "Revenues"], "maxFactsPerMetric": 4}` returns 2 company rows, up to 10 filing rows and up to 32 fact rows: 2 × $0.0015 + 10 × $0.001 + 32 × $0.0002 = **$0.02** at most, plus $0.00005. Turning on `includeTextExcerpt` adds $0.002 per filing.
 
 To cap spend, use `mode: "facts"` or `"filings"`, lower `maxFilingsPerCompany` / `maxFactsPerMetric`, or set a maximum cost per run in the run options (the Actor stops cleanly at the limit). Prices are from the Store pricing tab (October 2026).
 
@@ -164,7 +164,7 @@ No. It covers SEC registrants only, with no market data.
 
 **How much does a run cost?**
 
-From $0.002 per resolved company, plus $0.002 per filing row, $0.0005 per fact row and $0.003 per excerpt. A two-company example with filings and facts costs about $0.04.
+From $0.0015 per resolved company, plus $0.001 per filing row, $0.0002 per fact row and $0.002 per excerpt. A two-company example with filings and facts costs about $0.02.
 
 **Can an AI agent call it?**
 
@@ -174,12 +174,12 @@ Yes, through [Apify MCP](https://mcp.apify.com) (see the scoped URL in the MCP s
 
 Other Fairquery tools on the Apify Store. Each one returns structured rows with machine-readable error codes, and error rows are never charged:
 
-- [Email Validator for Agents (MX, Disposable, Typo)](https://apify.com/fairquery/email-validator-mx-disposable): syntax, MX, disposable, role and typo checks without sending mail; $2 per 1,000 emails
-- [Website Contact & Company Enricher](https://apify.com/fairquery/website-contact-company-enricher): domain in, public business emails, phones, socials and company details out; $4 per 1,000 domains
-- [Website Tech, SEO & llms.txt Check for Agents](https://apify.com/fairquery/website-tech-seo-ai-readiness): tech stack, SEO score, AI-crawler rules and llms.txt per site; $2 per 1,000 sites
-- [Sanctions & Watchlist Screener (OFAC, EU, UK, UN)](https://apify.com/fairquery/sanctions-watchlist-screener): fuzzy name screening against official sanctions lists; $5 per 1,000 names
-- [LLM Data Guard: PII & Secret Redactor](https://apify.com/fairquery/llm-data-guard-pii-secrets): redact PII and secrets before text reaches an LLM; $3 per 1,000 documents + $0.50 per 1,000 findings
-- [Dependency Vulnerability Check for Agents](https://apify.com/fairquery/osv-dependency-vulnerability-check): packages and lockfiles against OSV.dev; $0.90 per 1,000 packages + $2.80 per 1,000 vulnerabilities
+- [Email Validator for Agents (MX, Disposable, Typo)](https://apify.com/fairquery/email-validator-mx-disposable): syntax, MX, disposable, role and typo checks without sending mail; $0.79 per 1,000 emails
+- [Website Contact & Company Enricher](https://apify.com/fairquery/website-contact-company-enricher): domain in, public business emails, phones, socials and company details out; $3 per 1,000 domains
+- [Website Tech, SEO & llms.txt Check for Agents](https://apify.com/fairquery/website-tech-seo-ai-readiness): tech stack, SEO score, AI-crawler rules and llms.txt per site; $1.50 per 1,000 sites
+- [Sanctions & Watchlist Screener (OFAC, EU, UK, UN)](https://apify.com/fairquery/sanctions-watchlist-screener): fuzzy name screening against official sanctions lists; $3 per 1,000 names + $0.007 per run
+- [LLM Data Guard: PII & Secret Redactor](https://apify.com/fairquery/llm-data-guard-pii-secrets): redact PII and secrets before text reaches an LLM; $1.50 per 1,000 documents + $0.20 per 1,000 findings
+- [Dependency Vulnerability Check for Agents](https://apify.com/fairquery/osv-dependency-vulnerability-check): packages and lockfiles against OSV.dev; $0.50 per 1,000 packages + $1.50 per 1,000 vulnerabilities
 - **MCP server** [`@fairquery/agent-trust-mcp`](https://www.npmjs.com/package/@fairquery/agent-trust-mcp): one MCP server for Claude Desktop, Cursor and VS Code (`npx -y @fairquery/agent-trust-mcp`). It has 7 free tools that need no token, plus paid tools that call the PII, email, sanctions and OSV Actors with your own Apify token.
 
 All Fairquery Actors: https://apify.com/fairquery
