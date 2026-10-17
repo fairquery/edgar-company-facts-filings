@@ -119,13 +119,13 @@ The Actor sends `User-Agent: Fairquery fairquery@proton.me` and throttles to **�
 | --- | --- | --- | --- |
 | `companies` | `string[]` | — | Tickers (`AAPL`), CIKs (`320193`), or name fragments (`Apple`) |
 | `mode` | `filings` \| `facts` \| `both` | `both` | Which row types to emit (always emits `company` when resolved) |
-| `formTypes` | `string[]` | `[]` | Form filter; empty = all |
+| `formTypes` | `string[]` | `["10-K","10-Q","8-K"]` | Form filter (case-insensitive); pass `[]` for all forms |
 | `since` | `YYYY-MM-DD` | — | Keep filings with `filingDate >= since` |
-| `maxFilingsPerCompany` | `int` | `10` | Cap filing rows per company |
-| `metrics` | `string[]` | defaults | XBRL concept names; empty uses a curated us-gaap set |
-| `maxFactsPerMetric` | `int` | `8` | Most-recent values per concept/unit |
+| `maxFilingsPerCompany` | `int` (1–200) | `5` | Cap filing rows per company |
+| `metrics` | `string[]` | `["Assets","NetIncomeLoss","EarningsPerShareDiluted","Revenues"]` | XBRL concept names (case-insensitive); `[]` uses a curated 10-concept us-gaap set |
+| `maxFactsPerMetric` | `int` (1–50) | `4` | Most-recent values per concept/unit |
 | `includeTextExcerpt` | `bool` | `false` | Fetch primary document text |
-| `excerptMaxChars` | `int` | `2000` | Excerpt length cap |
+| `excerptMaxChars` | `int` (200–20,000) | `2000` | Excerpt length cap in characters |
 
 ### Example input
 
